@@ -32,7 +32,7 @@ export type ToWebview =
 
 export type FromWebview =
   | { type: 'ready' }
-  | { type: 'send'; text: string; includeActive: boolean }
+  | { type: 'send'; text: string; includeActive: boolean; images?: string[] }
   | { type: 'stop' }
   | { type: 'approval'; id: string; decision: 'approve' | 'always' | 'reject'; feedback?: string }
   | { type: 'mode'; mode: 'agent' | 'ask' }

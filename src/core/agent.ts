@@ -26,6 +26,9 @@ export interface AgentOptions {
 type ToolItem = Extract<UiItem, { kind: 'tool' }>;
 
 const SUBAGENT_MAX_TURNS = 40;
+/** Rough cost of one attached image, for context budgeting. */
+const IMAGE_TOKENS = 1500;
+const imageNote = (n: number) => `[${n} image${n === 1 ? '' : 's'} attached here earlier; removed to save context. Ask the user to attach again if you need to see ${n === 1 ? 'it' : 'them'}.]`;
 
 export class Agent {
   readonly messages: ChatMessage[];
@@ -50,9 +53,11 @@ export class Agent {
   }
 
   /** Runs one user request to completion and returns the final reply text. */
-  async run(userText: string): Promise<string> {
+  async run(userText: string, images: string[] = []): Promise<string> {
     repairToolResults(this.messages);
-    this.messages.push({ role: 'user', content: userText });
+    const user: ChatMessage = { role: 'user', content: userText };
+    if (images.length) user.images = images;
+    this.messages.push(user);
     let turns = 0;
     let lengthRetries = 0;
     let contextRetries = 0;
@@ -270,7 +275,7 @@ export class Agent {
   private estimateTokens(): number {
     let chars = this.o.system.length;
     for (const m of this.messages) {
-      chars += (m.content?.length ?? 0) + 20;
+      chars += (m.content?.length ?? 0) + 20 + (m.images?.length ?? 0) * IMAGE_TOKENS * 3.6;
       for (const c of m.tool_calls ?? []) chars += c.function.arguments.length + c.function.name.length + 20;
     }
     return Math.ceil(chars / 3.6);
@@ -280,11 +285,16 @@ export class Agent {
     const window = this.o.policy.contextWindow;
     if (!force && Math.max(this.estimateTokens(), this.lastPrompt) < window * 0.7) return;
 
-    // Step 1: shrink old tool output. Cheap, and often enough.
+    // Step 1: shrink old tool output and drop old images. Cheap, and often enough.
     const keepFrom = Math.max(0, this.messages.length - 12);
     let pruned = 0;
     for (let i = 0; i < keepFrom; i++) {
       const m = this.messages[i];
+      if (m.images?.length) {
+        m.content = `${m.content ?? ''}\n${imageNote(m.images.length)}`;
+        delete m.images;
+        pruned++;
+      }
       if (m.role === 'tool' && m.content && m.content.length > 1500 && !m.content.includes('[pruned')) {
         m.content = `${m.content.slice(0, 600)}\n[pruned to save context — run the tool again if you need the rest]`;
         pruned++;
@@ -292,7 +302,7 @@ export class Agent {
     }
     this.lastPrompt = 0;
     if (!force && this.estimateTokens() < window * 0.5) {
-      if (pruned && !this.isSub) this.notice('info', 'Trimmed older tool output to free up context.');
+      if (pruned && !this.isSub) this.notice('info', 'Trimmed older tool output and images to free up context.');
       return;
     }
 
@@ -302,7 +312,7 @@ export class Agent {
     let chars = 0;
     while (split > 1) {
       const m = this.messages[split - 1];
-      const len = (m.content?.length ?? 0) + (m.tool_calls?.reduce((n, c) => n + c.function.arguments.length, 0) ?? 0);
+      const len = (m.content?.length ?? 0) + (m.images?.length ?? 0) * IMAGE_TOKENS * 3.6 + (m.tool_calls?.reduce((n, c) => n + c.function.arguments.length, 0) ?? 0);
       if (chars + len > tailBudget) break;
       chars += len;
       split--;
@@ -368,7 +378,7 @@ export function repairToolResults(messages: ChatMessage[]): void {
 
 function renderForSummary(m: ChatMessage): string {
   const cap = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)} [...]` : s);
-  if (m.role === 'user') return `USER:\n${cap(m.content ?? '', 6000)}`;
+  if (m.role === 'user') return `USER:\n${cap(m.content ?? '', 6000)}${m.images?.length ? `\n${imageNote(m.images.length)}` : ''}`;
   if (m.role === 'tool') return `TOOL RESULT:\n${cap(m.content ?? '', 2500)}`;
   const calls = (m.tool_calls ?? []).map((c) => `CALL ${c.function.name}(${cap(c.function.arguments, 800)})`).join('\n');
   return `ASSISTANT:\n${cap(m.content ?? '', 6000)}${calls ? `\n${calls}` : ''}`;

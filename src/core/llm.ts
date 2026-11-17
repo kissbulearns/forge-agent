@@ -59,7 +59,7 @@ export class AzureOpenAIClient implements LlmClient {
     const deployment = (req.light && this.cfg.subagentDeployment) || this.cfg.deployment;
     const body: Record<string, unknown> = {
       model: deployment,
-      messages: req.messages,
+      messages: req.messages.map(toWire),
       stream: true,
       stream_options: { include_usage: true },
       max_completion_tokens: req.maxCompletionTokens ?? this.opts.maxCompletionTokens,
@@ -71,6 +71,7 @@ export class AzureOpenAIClient implements LlmClient {
     if (this.opts.reasoningEffort && this.opts.reasoningEffort !== 'default') {
       body.reasoning_effort = this.opts.reasoningEffort;
     }
+    const hasImages = req.messages.some((m) => m.images?.length);
     const payload = JSON.stringify(body);
     const base = this.opts.retryBaseMs ?? 1500;
 
@@ -114,6 +115,9 @@ export class AzureOpenAIClient implements LlmClient {
         refreshed = true;
         await this.auth.headers(true);
         continue;
+      }
+      if (res.status === 400 && hasImages && /image|vision|multimodal|content type|content part/i.test(text)) {
+        throw new Error(`Deployment "${deployment}" did not accept the attached image. It may not support image input. Remove the image or use a deployment that does. ${message}`);
       }
       if (res.status === 400 && /context_length|maximum context|too many tokens|context window/i.test(text)) {
         throw new ContextLengthError(message);
@@ -248,4 +252,17 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
     };
     signal?.addEventListener('abort', onAbort, { once: true });
   });
+}
+
+/** Converts a stored message to the API shape: attached images become image parts. */
+export function toWire(m: ChatMessage): Record<string, unknown> {
+  const { images, ...rest } = m;
+  if (!images?.length || m.role !== 'user') return rest;
+  return {
+    ...rest,
+    content: [
+      { type: 'text', text: m.content || 'See the attached image.' },
+      ...images.map((url) => ({ type: 'image_url', image_url: { url } })),
+    ],
+  };
 }

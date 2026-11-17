@@ -233,6 +233,23 @@ button { font: inherit; }
 .composer:focus-within { border-color: var(--accent); }
 .chips { display: flex; gap: 5px; flex-wrap: wrap; }
 .chips:empty { display: none; }
+.composer.drop { border-color: var(--accent); border-style: dashed; }
+.thumbs { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.thumbs:empty { display: none; }
+.thumb { position: relative; width: 52px; height: 52px; border-radius: 6px; overflow: hidden; border: 1px solid var(--border); flex: none; }
+.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb-x {
+  position: absolute; top: 2px; right: 2px; width: 16px; height: 16px; padding: 2px;
+  border: 0; border-radius: 50%; cursor: pointer; display: grid; place-items: center;
+  background: rgba(0, 0, 0, 0.65); color: #fff;
+}
+.thumb-x svg { width: 10px; height: 10px; }
+.thumb-x:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+.thumb-note { font-size: 0.88em; color: var(--muted); }
+.shots { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
+.shots:last-child { margin-bottom: 0; }
+.shot { max-width: 140px; max-height: 110px; border-radius: 6px; border: 1px solid var(--border); cursor: zoom-in; display: block; object-fit: contain; }
+.shot.big { max-width: 100%; max-height: none; cursor: zoom-out; }
 .chip {
   display: inline-flex; align-items: center; gap: 5px; max-width: 100%;
   padding: 0 7px; border-radius: 10px; font-size: 0.88em; cursor: pointer;

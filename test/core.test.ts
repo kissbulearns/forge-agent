@@ -13,7 +13,7 @@ import { assertWritable, GuardError, isSensitivePath, resolveInWorkspace } from 
 import { COMPACTION_PROMPT, systemPrompt } from '../src/core/prompt';
 import { loadRules, parseRule } from '../src/core/rules';
 import { lineDiff, newSessionState } from '../src/core/tools';
-import { AbortError, ApprovalDecision, ApprovalRequest, ChatMessage, defaultPolicy, emptyUsage, Host, Policy, Todo, UiItem } from '../src/core/types';
+import { AbortError, ApprovalDecision, ApprovalRequest, ChatMessage, cleanImages, defaultPolicy, emptyUsage, Host, Policy, Todo, UiItem } from '../src/core/types';
 import { MockAzure, Responder } from './mockAzure';
 
 const mock = new MockAzure();
@@ -86,6 +86,8 @@ function makeAgent(opts: { host?: TestHost; mode?: 'agent' | 'ask'; policy?: Par
   });
   return { agent, host };
 }
+
+const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 
 /** Replies from a list, one per main-agent request; sub-agent and compaction requests are answered separately. */
 function scripted(steps: Array<ReturnType<Responder>>): Responder {
@@ -448,6 +450,47 @@ describe('agent loop', () => {
     assert.ok(lastReq[1].content.includes('ORIGINAL-GOAL'), 'the original request survives compaction');
     assert.ok(lastReq[1].content.includes('BRIEFING'));
     assert.ok([...host.items.values()].some((i) => i.kind === 'notice' && /Compacted/.test(i.text)));
+  });
+
+  it('sends attached images to the model as image parts', async () => {
+    mock.responder = scripted([{ content: 'seen' }]);
+    const { agent } = makeAgent();
+    assert.equal(await agent.run('what does this error say?', [PNG]), 'seen');
+    const user = mock.requests[0].messages[1];
+    assert.deepEqual(user.content, [
+      { type: 'text', text: 'what does this error say?' },
+      { type: 'image_url', image_url: { url: PNG } },
+    ]);
+    assert.equal(user.images, undefined, 'the internal field is not sent');
+    assert.deepEqual(agent.messages[0].images, [PNG], 'the image stays with the stored message');
+  });
+
+  it('accepts only well-formed image data within the limits', () => {
+    assert.deepEqual(cleanImages([PNG, 'data:image/svg+xml;base64,AAAA', 'https://example.com/a.png', 'data:image/png;base64,<script>', 42]), [PNG]);
+    assert.equal(cleanImages(Array.from({ length: 9 }, () => PNG)).length, 5);
+    assert.deepEqual(cleanImages(['data:image/png;base64,' + 'A'.repeat(6_000_001)]), []);
+    assert.deepEqual(cleanImages(undefined), []);
+  });
+
+  it('drops old images when the conversation is compacted', async () => {
+    fs.writeFileSync(path.join(root, 'big.txt'), Array.from({ length: 400 }, (_, i) => `line ${i} ${'x'.repeat(60)}`).join('\n'));
+    const steps = Array.from({ length: 14 }, () => ({ toolCalls: [{ name: 'read_file', args: { path: 'big.txt' } }] }));
+    mock.responder = scripted([...steps, { content: 'finished' }]);
+    const { agent } = makeAgent({ policy: { contextWindow: 30000 } });
+    assert.equal(await agent.run('look at this screenshot', [PNG]), 'finished');
+    const main = mock.requests.filter((r) => String(r.messages[0].content).startsWith('You are Forge'));
+    assert.ok(JSON.stringify(main[0].messages).includes('image_url'), 'the image is sent at first');
+    const last = main[main.length - 1].messages;
+    assertValidConversation(last);
+    assert.ok(!JSON.stringify(last).includes('image_url'), 'the image is gone after compaction');
+    assert.ok(agent.messages.every((m) => !m.images), 'no stored message keeps the image');
+    assert.ok(JSON.stringify(mock.requests).includes('image attached here earlier'), 'a note replaces the image');
+  });
+
+  it('explains a deployment that does not accept images', async () => {
+    mock.responder = () => ({ status: 400, errorMessage: 'Invalid content type. image_url is only supported by certain models.' });
+    const { agent } = makeAgent();
+    await assert.rejects(agent.run('read this', [PNG]), /did not accept the attached image/);
   });
 
   it('recovers from tool arguments cut off at the output limit', async () => {

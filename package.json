@@ -2,11 +2,14 @@
   "name": "forge-agent",
   "displayName": "Forge Agent",
   "description": "An autonomous coding agent for VS Code that runs on your own Azure OpenAI deployment.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "internal",
   "private": true,
   "license": "Apache-2.0",
-  "repository": { "type": "git", "url": "https://github.com/kissbulearns/forge-agent.git" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kissbulearns/forge-agent.git"
+  },
   "engines": {
     "vscode": "^1.90.0"
   },

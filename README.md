@@ -8,7 +8,7 @@ It is not tied to a language or stack. It works on any codebase you can open as 
 
 ## Install
 
-1. In VS Code: **Extensions** → **…** menu → **Install from VSIX…** → choose `forge-agent-0.1.0.vsix`.
+1. In VS Code: **Extensions** → **…** menu → **Install from VSIX…** → choose `forge-agent-0.2.0.vsix`.
 2. Open the **Forge Agent** icon in the activity bar.
 3. Click **Open connection file** (or run **Forge: Set Up Azure OpenAI Connection**). This creates `~/.forge-agent/.env`. Fill it in and save:
 
@@ -89,6 +89,7 @@ A rule with `alwaysApply: true` (or no frontmatter) is always in effect. A rule 
 - **Enter** sends, **Shift+Enter** adds a line, **Esc** stops.
 - The chip above the input shows the file you have open; click it to leave it out.
 - **@** mentions a file. Right-click a selection → **Add Selection to Forge Chat**.
+- **Images:** paste a screenshot into the message box, drop an image on it, or use the image button. Up to five per message; large ones are scaled down before sending. Useful for an error dialog, a mock-up or a requirement captured as a picture. The deployment must support image input.
 - File paths in replies are clickable.
 - The view's toolbar has **New Chat**, **Chat History** and **Settings**; the **…** menu has **Revert File Changes Made in This Chat**.
 - The footer shows tokens used, an estimated cost if you set the `forge.pricing.*` settings, and how full the context window is.
@@ -110,7 +111,8 @@ A rule with `alwaysApply: true` (or no frontmatter) is always in effect. A rule 
 - One workspace folder (the first, in a multi-root workspace).
 - Revert and "Open diff" are kept only while the window stays open; use git for anything longer.
 - Commands run without a terminal, so interactive prompts and long-running servers do not work; the agent is told to pass flags instead.
-- No MCP servers, image input or web access yet.
+- No MCP servers or web access yet.
+- Images come from you, in the chat. The agent does not open image files in the workspace by itself, and images in older messages are dropped when a long conversation is compacted.
 - Behind a corporate proxy, VS Code's own proxy settings apply (`http.proxy`, `http.proxySupport`).
 
 ## Develop
@@ -119,7 +121,7 @@ A rule with `alwaysApply: true` (or no frontmatter) is always in effect. A rule 
 npm install
 npm test          # core tests against a mock Azure endpoint
 npm run build     # dist/extension.js and dist/webview.js
-npm run package   # forge-agent-0.1.0.vsix
+npm run package   # forge-agent-0.2.0.vsix
 ```
 
 Press F5 in VS Code to run the extension in a development window. `src/core` has no VS Code dependency, so the same agent can be driven from a CLI or a test.

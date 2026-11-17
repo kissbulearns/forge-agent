@@ -20,6 +20,7 @@ const ICON = {
   chev: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5L10.5 8 6 12.5"/></svg>',
   send: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V3M3.5 7.5L8 3l4.5 4.5"/></svg>',
   stop: '<svg viewBox="0 0 16 16" fill="currentColor"><rect x="4" y="4" width="8" height="8" rx="1.5"/></svg>',
+  image: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="10" rx="1.5"/><circle cx="5.6" cy="6.4" r="1.1"/><path d="M2.5 11.5l3.4-3.2 2.4 2.2 2.2-2.4 3 3.2"/></svg>',
   at: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="8" cy="8" r="2.6"/><path d="M10.6 5.4v3.4a1.7 1.7 0 0 0 3.4 0V8a6 6 0 1 0-2.4 4.8"/></svg>',
 };
 
@@ -57,6 +58,7 @@ app.innerHTML = `
     <div class="todos" id="todos" hidden></div>
     <div class="composer">
       <div class="chips" id="chips"></div>
+      <div class="thumbs" id="thumbs"></div>
       <textarea id="input" rows="1" placeholder="Ask Forge to build, fix or investigate…" aria-label="Message"></textarea>
       <div class="bar">
         <select id="mode" title="Agent can edit files and run commands. Read-only can only look." aria-label="Mode">
@@ -64,6 +66,8 @@ app.innerHTML = `
           <option value="ask">Read-only</option>
         </select>
         <button class="icon-btn" id="attach" title="Mention a file" aria-label="Mention a file">${ICON.at}</button>
+        <button class="icon-btn" id="image" title="Attach an image (or paste a screenshot)" aria-label="Attach an image">${ICON.image}</button>
+        <input type="file" id="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
         <span class="spacer"></span>
         <span class="meter" id="meter"></span>
         <button class="send" id="send" title="Send (Enter)" aria-label="Send">${ICON.send}</button>
@@ -77,6 +81,9 @@ const itemsEl = $('items');
 const emptyEl = $('empty');
 const todosEl = $('todos');
 const chipsEl = $('chips');
+const thumbsEl = $('thumbs');
+const fileEl = $<HTMLInputElement>('file');
+const composerEl = document.querySelector('.composer') as HTMLElement;
 const input = $<HTMLTextAreaElement>('input');
 const modeEl = $<HTMLSelectElement>('mode');
 const meterEl = $('meter');
@@ -88,6 +95,44 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
   if (text !== undefined) e.textContent = text;
   return e;
 };
+
+// ---- Image helpers ----
+
+const MAX_IMAGES = 5;
+/** Longest side sent to the model; larger images are scaled down. */
+const MAX_SIDE = 1568;
+const KEEP_AS_IS_CHARS = 1_500_000;
+const IMAGE_URL = /^data:image\/(png|jpeg|gif|webp);base64,[A-Za-z0-9+/]+=*$/;
+let shots: string[] = [];
+const canSend = () => !!input.value.trim() || shots.length > 0;
+
+/** Reads an image and returns a data URL, scaled down and re-encoded when it is large. */
+async function prepareImage(file: Blob): Promise<string> {
+  const raw = await new Promise<string>((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result));
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(file);
+  });
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const i = new Image();
+    i.onload = () => resolve(i);
+    i.onerror = () => reject(new Error('unreadable image'));
+    i.src = raw;
+  });
+  const scale = Math.min(1, MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight, 1));
+  if (scale === 1 && IMAGE_URL.test(raw) && raw.length <= KEEP_AS_IS_CHARS) return raw;
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+  canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+  const g = canvas.getContext('2d');
+  if (!g) throw new Error('no canvas');
+  g.fillStyle = '#ffffff';
+  g.fillRect(0, 0, canvas.width, canvas.height);
+  g.drawImage(img, 0, 0, canvas.width, canvas.height);
+  const png = canvas.toDataURL('image/png');
+  return png.length <= KEEP_AS_IS_CHARS ? png : canvas.toDataURL('image/jpeg', 0.88);
+}
 
 // ---- Scrolling ----
 
@@ -158,7 +203,21 @@ function renderItem(item: UiItem): HTMLElement {
   switch (item.kind) {
     case 'user': {
       const wrap = el('div', 'msg user');
-      wrap.appendChild(el('div', 'bubble', item.text));
+      const bubble = el('div', 'bubble', item.text);
+      const shots = (item.images ?? []).filter((u) => IMAGE_URL.test(u));
+      if (shots.length) {
+        const row = el('div', 'shots');
+        for (const url of shots) {
+          const img = el('img', 'shot');
+          img.src = url;
+          img.alt = 'Attached image';
+          img.title = 'Click to enlarge';
+          img.addEventListener('click', () => img.classList.toggle('big'));
+          row.appendChild(img);
+        }
+        bubble.prepend(row);
+      }
+      wrap.appendChild(bubble);
       return wrap;
     }
     case 'assistant': {
@@ -487,7 +546,7 @@ function renderBusy(busy: boolean): void {
   sendBtn.innerHTML = busy ? ICON.stop : ICON.send;
   sendBtn.title = busy ? 'Stop' : 'Send (Enter)';
   sendBtn.setAttribute('aria-label', busy ? 'Stop' : 'Send');
-  sendBtn.disabled = !busy && !input.value.trim();
+  sendBtn.disabled = !busy && !canSend();
   renderThinking();
   toBottom();
 }
@@ -495,7 +554,7 @@ function renderBusy(busy: boolean): void {
 function autosize(): void {
   input.style.height = 'auto';
   input.style.height = `${Math.min(220, input.scrollHeight)}px`;
-  sendBtn.disabled = !state.busy && !input.value.trim();
+  sendBtn.disabled = !state.busy && !canSend();
   vscode.setState({ draft: input.value });
 }
 
@@ -505,10 +564,12 @@ function submit(): void {
     return;
   }
   const text = input.value.trim();
-  if (!text) return;
+  if (!canSend()) return;
   stick = true;
-  send({ type: 'send', text, includeActive });
+  send({ type: 'send', text, includeActive, ...(shots.length ? { images: shots } : {}) });
   input.value = '';
+  shots = [];
+  renderThumbs();
   autosize();
 }
 
@@ -524,6 +585,80 @@ input.addEventListener('keydown', (e) => {
 sendBtn.addEventListener('click', submit);
 modeEl.addEventListener('change', () => send({ type: 'mode', mode: modeEl.value as 'agent' | 'ask' }));
 $('attach').addEventListener('click', () => send({ type: 'attach' }));
+
+// ---- Image attachments ----
+
+$('image').addEventListener('click', () => fileEl.click());
+fileEl.addEventListener('change', () => {
+  void addImages(Array.from(fileEl.files ?? []));
+  fileEl.value = '';
+});
+input.addEventListener('paste', (e) => {
+  const files = Array.from(e.clipboardData?.items ?? [])
+    .filter((i) => i.kind === 'file' && i.type.startsWith('image/'))
+    .map((i) => i.getAsFile())
+    .filter((f): f is File => !!f);
+  if (!files.length) return;
+  e.preventDefault();
+  void addImages(files);
+});
+const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files');
+composerEl.addEventListener('dragover', (e) => {
+  if (!hasFiles(e)) return;
+  e.preventDefault();
+  composerEl.classList.add('drop');
+});
+composerEl.addEventListener('dragleave', () => composerEl.classList.remove('drop'));
+composerEl.addEventListener('drop', (e) => {
+  composerEl.classList.remove('drop');
+  if (!hasFiles(e)) return;
+  e.preventDefault();
+  void addImages(Array.from(e.dataTransfer?.files ?? []));
+});
+
+async function addImages(files: Blob[]): Promise<void> {
+  let note = '';
+  for (const f of files) {
+    if (!f.type.startsWith('image/')) {
+      note = 'Only images can be attached here. Use @ to mention a file.';
+      continue;
+    }
+    if (shots.length >= MAX_IMAGES) {
+      note = `Up to ${MAX_IMAGES} images per message.`;
+      break;
+    }
+    try {
+      shots.push(await prepareImage(f));
+    } catch {
+      note = 'That image could not be read.';
+    }
+  }
+  renderThumbs(note);
+  autosize();
+  input.focus();
+}
+
+function renderThumbs(note = ''): void {
+  thumbsEl.replaceChildren();
+  shots.forEach((url, i) => {
+    const t = el('div', 'thumb');
+    const img = el('img');
+    img.src = url;
+    img.alt = `Attached image ${i + 1}`;
+    const x = el('button', 'thumb-x');
+    x.innerHTML = ICON.cross;
+    x.title = 'Remove image';
+    x.setAttribute('aria-label', `Remove image ${i + 1}`);
+    x.addEventListener('click', () => {
+      shots.splice(i, 1);
+      renderThumbs();
+      autosize();
+    });
+    t.append(img, x);
+    thumbsEl.appendChild(t);
+  });
+  if (note) thumbsEl.appendChild(el('span', 'thumb-note', note));
+}
 
 function insertAtCursor(text: string): void {
   const start = input.selectionStart ?? input.value.length;

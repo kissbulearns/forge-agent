@@ -7,6 +7,8 @@ export interface ToolCall {
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string | null;
+  /** Images attached to a user message, as data URLs. Sent to the model as image parts. */
+  images?: string[];
   tool_calls?: ToolCall[];
   tool_call_id?: string;
 }
@@ -30,7 +32,7 @@ export type ToolStatus = 'approval' | 'running' | 'done' | 'error' | 'rejected';
 
 /** One entry in the visible transcript. The host owns these; the webview renders them. */
 export type UiItem =
-  | { kind: 'user'; id: string; text: string }
+  | { kind: 'user'; id: string; text: string; images?: string[] }
   | { kind: 'assistant'; id: string; text: string; streaming?: boolean }
   | {
       kind: 'tool';
@@ -119,6 +121,19 @@ export class ContextLengthError extends Error {
     super(message);
     this.name = 'ContextLengthError';
   }
+}
+
+/** Limits for images attached to a message. */
+export const MAX_IMAGES = 5;
+export const MAX_IMAGE_CHARS = 6_000_000;
+const IMAGE_URL = /^data:image\/(png|jpeg|gif|webp);base64,[A-Za-z0-9+/]+=*$/;
+
+/** Keeps only well-formed image data URLs within the limits. */
+export function cleanImages(images: unknown): string[] {
+  if (!Array.isArray(images)) return [];
+  return images
+    .filter((u): u is string => typeof u === 'string' && u.length <= MAX_IMAGE_CHARS && IMAGE_URL.test(u))
+    .slice(0, MAX_IMAGES);
 }
 
 let counter = 0;

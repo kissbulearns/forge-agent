@@ -114,6 +114,17 @@
     },
   };
 
+  // A generated stand-in screenshot for the first user message.
+  (() => {
+    const c = document.createElement('canvas');
+    c.width = 480; c.height = 260;
+    const g = c.getContext('2d');
+    g.fillStyle = '#1f2430'; g.fillRect(0, 0, 480, 260);
+    g.fillStyle = '#e06c75'; g.font = '16px monospace'; g.fillText('TypeError: invoice is undefined', 20, 60);
+    g.fillStyle = '#9da5b4'; g.fillText('  at InvoiceService.approve (line 42)', 20, 90);
+    scenes.chat.items[0].images = [c.toDataURL('image/png')];
+  })();
+
   window.acquireVsCodeApi = () => ({
     postMessage: (m) => {
       sent.push(m);

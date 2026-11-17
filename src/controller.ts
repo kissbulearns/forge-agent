@@ -14,6 +14,7 @@ import {
   ApprovalDecision,
   ApprovalRequest,
   ChatMessage,
+  cleanImages,
   CommandResult,
   emptyUsage,
   Host,
@@ -146,7 +147,7 @@ export class ChatController implements Host {
       case 'ready':
         return this.refresh();
       case 'send':
-        return this.send(m.text, m.includeActive);
+        return this.send(m.text, m.includeActive, cleanImages(m.images));
       case 'stop':
         return this.stop();
       case 'approval': {
@@ -172,8 +173,8 @@ export class ChatController implements Host {
 
   // ---- Running a request ----
 
-  private async send(text: string, includeActive: boolean): Promise<void> {
-    const trimmed = text.trim();
+  private async send(text: string, includeActive: boolean, images: string[] = []): Promise<void> {
+    const trimmed = text.trim() || (images.length ? 'See the attached image.' : '');
     if (!trimmed || this.busy) return;
     const root = this.root;
     if (!root) {
@@ -187,7 +188,7 @@ export class ChatController implements Host {
       return;
     }
 
-    this.upsert({ kind: 'user', id: newId('u'), text: trimmed });
+    this.upsert({ kind: 'user', id: newId('u'), text: trimmed, ...(images.length ? { images } : {}) });
     if (!this.title) this.title = trimmed.replace(/\s+/g, ' ').slice(0, 70);
     this.setBusy(true);
     this.abort = new AbortController();
@@ -210,7 +211,7 @@ export class ChatController implements Host {
     });
 
     try {
-      const reply = await agent.run(trimmed + this.editorContext(includeActive));
+      const reply = await agent.run(trimmed + this.editorContext(includeActive), images);
       if (!reply.trim()) this.notice('warn', 'The model returned an empty reply. Try rephrasing, or raise forge.model.maxCompletionTokens.');
     } catch (e) {
       if (e instanceof AbortError || this.abort.signal.aborted) {
