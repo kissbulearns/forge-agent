@@ -1,0 +1,267 @@
+{
+  "name": "forge-agent",
+  "displayName": "Forge Agent",
+  "description": "An autonomous coding agent for VS Code that runs on your own Azure OpenAI deployment.",
+  "version": "0.1.0",
+  "publisher": "internal",
+  "private": true,
+  "license": "Apache-2.0",
+  "repository": { "type": "git", "url": "https://github.com/kissbulearns/forge-agent.git" },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "AI",
+    "Chat"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "forge",
+          "title": "Forge Agent",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "forge": [
+        {
+          "type": "webview",
+          "id": "forge.chat",
+          "name": "Chat"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "forge.newChat",
+        "title": "New Chat",
+        "category": "Forge",
+        "icon": "$(add)"
+      },
+      {
+        "command": "forge.history",
+        "title": "Chat History",
+        "category": "Forge",
+        "icon": "$(history)"
+      },
+      {
+        "command": "forge.setup",
+        "title": "Set Up Azure OpenAI Connection",
+        "category": "Forge",
+        "icon": "$(plug)"
+      },
+      {
+        "command": "forge.testConnection",
+        "title": "Test Azure OpenAI Connection",
+        "category": "Forge"
+      },
+      {
+        "command": "forge.revertChanges",
+        "title": "Revert File Changes Made in This Chat",
+        "category": "Forge",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "forge.openSettings",
+        "title": "Open Settings",
+        "category": "Forge",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "forge.addSelection",
+        "title": "Add Selection to Forge Chat",
+        "category": "Forge"
+      },
+      {
+        "command": "forge.focus",
+        "title": "Focus Chat Input",
+        "category": "Forge"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "forge.newChat",
+          "when": "view == forge.chat",
+          "group": "navigation@1"
+        },
+        {
+          "command": "forge.history",
+          "when": "view == forge.chat",
+          "group": "navigation@2"
+        },
+        {
+          "command": "forge.openSettings",
+          "when": "view == forge.chat",
+          "group": "navigation@3"
+        },
+        {
+          "command": "forge.revertChanges",
+          "when": "view == forge.chat",
+          "group": "more@1"
+        },
+        {
+          "command": "forge.setup",
+          "when": "view == forge.chat",
+          "group": "more@2"
+        },
+        {
+          "command": "forge.testConnection",
+          "when": "view == forge.chat",
+          "group": "more@3"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "forge.addSelection",
+          "when": "editorHasSelection",
+          "group": "forge@1"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "forge.focus",
+        "key": "ctrl+alt+f",
+        "mac": "cmd+alt+f"
+      }
+    ],
+    "configuration": {
+      "title": "Forge Agent",
+      "properties": {
+        "forge.envFile": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to the `.env` file holding the Azure connection values. Leave empty to use `~/.forge-agent/.env`, then `.env` in the workspace root."
+        },
+        "forge.azure.endpoint": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Azure OpenAI endpoint URL. Overrides `AZURE_OPENAI_ENDPOINT`."
+        },
+        "forge.azure.deployment": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Chat deployment name. Overrides `AZURE_OPENAI_CHAT_DEPLOYMENT_NAME`."
+        },
+        "forge.azure.subagentDeployment": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Optional cheaper deployment for sub-agents and context summaries. Empty uses the main deployment."
+        },
+        "forge.azure.apiVersion": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "API version. Overrides `OPENAI_API_VERSION`. Use `v1` for the versionless `/openai/v1` route."
+        },
+        "forge.model.maxCompletionTokens": {
+          "type": "number",
+          "default": 32000,
+          "description": "Upper limit on tokens the model may produce in one reply (sent as max_completion_tokens)."
+        },
+        "forge.model.reasoningEffort": {
+          "type": "string",
+          "enum": [
+            "default",
+            "minimal",
+            "low",
+            "medium",
+            "high"
+          ],
+          "default": "default",
+          "description": "Reasoning effort for reasoning models. 'default' sends nothing and lets the deployment decide."
+        },
+        "forge.model.contextWindow": {
+          "type": "number",
+          "default": 200000,
+          "description": "Input context size of the deployment, in tokens. The agent compacts the conversation as it nears this."
+        },
+        "forge.autoApprove.edits": {
+          "type": "boolean",
+          "default": false,
+          "description": "Apply file edits without asking. Edits can still be reverted from the chat menu."
+        },
+        "forge.autoApprove.safeCommands": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run read-only commands (ls, git status, git diff, ...) without asking."
+        },
+        "forge.autoApprove.allCommands": {
+          "type": "boolean",
+          "default": false,
+          "description": "Run ordinary commands without asking. Commands classed as dangerous (deletes, pushes, changes to remote systems) always ask."
+        },
+        "forge.salesforce.orgWrites": {
+          "type": "string",
+          "enum": [
+            "ask",
+            "block"
+          ],
+          "default": "ask",
+          "markdownDescription": "How to treat commands that change a Salesforce org (deploy, data create/update/delete, anonymous Apex). `ask` requires approval every time; `block` refuses them."
+        },
+        "forge.protectedPaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Glob patterns the agent may read but never write, for example `docs/published/**`."
+        },
+        "forge.limits.maxTurns": {
+          "type": "number",
+          "default": 150,
+          "description": "Model turns before the agent pauses and asks whether to continue."
+        },
+        "forge.limits.commandTimeoutSeconds": {
+          "type": "number",
+          "default": 120,
+          "description": "Default timeout for a command the agent runs."
+        },
+        "forge.shell": {
+          "type": "string",
+          "default": "",
+          "description": "Shell used to run commands. Empty uses cmd.exe on Windows and /bin/sh elsewhere."
+        },
+        "forge.pricing.inputPerMillion": {
+          "type": "number",
+          "default": 0,
+          "description": "Price per million input tokens, to show an estimated cost. 0 hides cost."
+        },
+        "forge.pricing.cachedInputPerMillion": {
+          "type": "number",
+          "default": 0,
+          "description": "Price per million cached input tokens."
+        },
+        "forge.pricing.outputPerMillion": {
+          "type": "number",
+          "default": 0,
+          "description": "Price per million output tokens."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "node esbuild.mjs --test && node --test dist-test/*.cjs",
+    "package": "npm run typecheck && node esbuild.mjs --production && vsce package --no-dependencies --allow-missing-repository"
+  },
+  "devDependencies": {
+    "@types/dompurify": "^3.0.5",
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.2.0",
+    "dompurify": "^3.2.0",
+    "esbuild": "^0.24.0",
+    "highlight.js": "^11.10.0",
+    "ignore": "^6.0.2",
+    "marked": "^14.1.0",
+    "typescript": "^5.6.0"
+  }
+}

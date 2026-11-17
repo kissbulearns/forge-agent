@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Forge chat UI harness</title>
+<style>
+  /* Stand-ins for the variables VS Code injects (Dark Modern). Add ?light for Light Modern. */
+  :root {
+    --vscode-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --vscode-font-size: 13px;
+    --vscode-editor-font-family: Menlo, Consolas, monospace;
+    --vscode-foreground: #cccccc;
+    --vscode-descriptionForeground: #9d9d9d;
+    --vscode-sideBar-background: #181818;
+    --vscode-editorWidget-background: #202020;
+    --vscode-widget-border: #313131;
+    --vscode-input-background: #313131;
+    --vscode-input-foreground: #cccccc;
+    --vscode-input-border: #3c3c3c;
+    --vscode-input-placeholderForeground: #989898;
+    --vscode-button-background: #0078d4;
+    --vscode-button-foreground: #ffffff;
+    --vscode-button-hoverBackground: #026ec1;
+    --vscode-button-secondaryBackground: #313131;
+    --vscode-button-secondaryForeground: #cccccc;
+    --vscode-button-secondaryHoverBackground: #3c3c3c;
+    --vscode-focusBorder: #0078d4;
+    --vscode-textLink-foreground: #4daafc;
+    --vscode-textCodeBlock-background: #2b2b2b;
+    --vscode-errorForeground: #f85149;
+    --vscode-charts-green: #89d185;
+    --vscode-charts-yellow: #cca700;
+    --vscode-charts-blue: #3794ff;
+    --vscode-charts-orange: #d18616;
+    --vscode-charts-purple: #b180d7;
+    --vscode-diffEditor-insertedTextBackground: rgba(156, 204, 44, 0.2);
+    --vscode-diffEditor-removedTextBackground: rgba(255, 0, 0, 0.2);
+    --vscode-dropdown-background: #313131;
+    --vscode-dropdown-foreground: #cccccc;
+  }
+  :root.light {
+    --vscode-foreground: #3b3b3b;
+    --vscode-descriptionForeground: #616161;
+    --vscode-sideBar-background: #f8f8f8;
+    --vscode-editorWidget-background: #f0f0f0;
+    --vscode-widget-border: #e5e5e5;
+    --vscode-input-background: #ffffff;
+    --vscode-input-foreground: #3b3b3b;
+    --vscode-input-border: #cecece;
+    --vscode-input-placeholderForeground: #767676;
+    --vscode-button-background: #005fb8;
+    --vscode-button-hoverBackground: #0258a8;
+    --vscode-button-secondaryBackground: #e5e5e5;
+    --vscode-button-secondaryForeground: #3b3b3b;
+    --vscode-button-secondaryHoverBackground: #cccccc;
+    --vscode-focusBorder: #005fb8;
+    --vscode-textLink-foreground: #005fb8;
+    --vscode-textCodeBlock-background: #ececec;
+    --vscode-errorForeground: #c72e0f;
+    --vscode-charts-green: #388a34;
+    --vscode-charts-yellow: #8a6d00;
+    --vscode-charts-blue: #1a85ff;
+    --vscode-charts-orange: #a8590a;
+    --vscode-charts-purple: #652d90;
+    --vscode-dropdown-background: #ffffff;
+    --vscode-dropdown-foreground: #3b3b3b;
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+  const q = new URLSearchParams(location.search);
+  if (q.has('light')) document.documentElement.classList.add('light');
+  const sent = [];
+  window.__sent = sent;
+  const post = (m) => window.postMessage(m, '*');
+  window.__post = post;
+
+  const base = {
+    todos: [], usage: { input: 0, cachedInput: 0, output: 0, lastPrompt: 0 }, busy: false, mode: 'agent',
+    ready: { ok: true, missing: [], deployment: 'gpt-5.2' }, pricing: { input: 1.25, cachedInput: 0.125, output: 10 },
+    contextWindow: 200000, hasWorkspace: true, items: [],
+  };
+  const scenes = {
+    empty: { ...base, activeFile: { path: 'force-app/main/default/classes/InvoiceService.cls' } },
+    setup: { ...base, ready: { ok: false, missing: ['AZURE_OPENAI_ENDPOINT', 'CLIENT_SECRET'] } },
+    chat: {
+      ...base,
+      busy: true,
+      activeFile: { path: 'force-app/main/default/classes/InvoiceService.cls', selection: { start: 40, end: 58 } },
+      usage: { input: 184200, cachedInput: 121000, output: 9400, lastPrompt: 68000 },
+      todos: [
+        { content: 'Read the approval rules page in the docs', status: 'completed' },
+        { content: 'Query active approval rules in dev-sandbox', status: 'completed' },
+        { content: 'Compare org record types with the docs', status: 'in_progress' },
+        { content: 'Write executable steps', status: 'pending' },
+      ],
+      items: [
+        { kind: 'user', id: 'u1', text: 'Let the Approver role approve Standard invoices in every status when Billing Country = US. Check the dev sandbox first.' },
+        { kind: 'assistant', id: 'a1', text: "I'll read the approval rule pages first, then check what the org actually has." },
+        { kind: 'tool', id: 't1', name: 'read_file', title: 'Read docs/modules/billing/approval-rules.md', status: 'done', output: '214 lines' },
+        { kind: 'tool', id: 't2', name: 'search_text', title: 'Search "Standard_Invoice"', detail: 'docs · *.md', status: 'done', output: '12 matches in 5 files' },
+        { kind: 'tool', id: 't3', name: 'run_command', title: 'Run command', detail: 'sf data query --query "SELECT Id, Name, Active__c FROM Approval_Rule__c WHERE Active__c = true LIMIT 20" --target-org dev-sandbox --json', status: 'done', output: 'Exit code: 0\n{\n  "status": 0,\n  "result": {\n    "totalSize": 1,\n    "records": [\n      { "Id": "a0X000000000001AAA", "Name": "Standard Invoice Approval" }\n    ]\n  }\n}' },
+        { kind: 'tool', id: 't4', name: 'spawn_agent', title: 'Sub-agent: map record type bindings', status: 'running', progress: '6 steps · Search "RecordType"' },
+        { kind: 'assistant', id: 'a2', text: "## Observed\n\nThe active approval rule for **Invoice → Standard** is `Standard Invoice Approval`. The Approver role can approve only in `Draft`.\n\n| Anchor | Org value | Proof |\n|---|---|---|\n| Invoice RT | `Standard_Invoice` | stored + registry |\n| Active rule | `a0X000000000001AAA` | live SOQL |\n\nThe condition belongs in `force-app/main/default/classes/InvoiceService.cls:42`:\n\n```apex\nif (invoice.Billing_Country__c == 'US') {\n    // allow approval in every status\n    grantApprove(invoice, ROLE_APPROVER);\n}\n```\n\n1. Clone the rule, do not edit the standard one.\n2. Add the step condition below." },
+        { kind: 'tool', id: 't5', name: 'edit_file', title: 'Edit force-app/main/default/classes/InvoiceService.cls', status: 'approval', canAlways: true, canViewDiff: true, diff: "@@ line 39 @@\n     Invoice__c invoice = load(id);\n     checkAccess(invoice);\n \n-    if (invoice.Status__c == 'Draft') {\n+    if (invoice.Status__c == 'Draft' || invoice.Billing_Country__c == 'US') {\n         grantApprove(invoice, ROLE_APPROVER);\n     }\n " },
+        { kind: 'tool', id: 't6', name: 'run_command', title: 'Run command', detail: 'sf project deploy start --source-dir force-app --target-org dev-sandbox', status: 'approval', danger: true, canAlways: false, reason: 'Changes a Salesforce org. Check the target org alias before approving.' },
+        { kind: 'tool', id: 't7', name: 'read_file', title: 'Read .env', status: 'error', output: '".env" may hold secrets, so the agent is not allowed to open it.' },
+        { kind: 'notice', id: 'n1', level: 'info', text: 'Compacted the earlier conversation to stay within the model context window.' },
+        { kind: 'assistant', id: 'a3', text: 'Checking the record type binding against the metadata export', streaming: true },
+      ],
+    },
+  };
+
+  window.acquireVsCodeApi = () => ({
+    postMessage: (m) => {
+      sent.push(m);
+      if (m.type === 'ready') post({ type: 'state', state: scenes[q.get('scene') || 'chat'] });
+    },
+    getState: () => undefined,
+    setState: () => undefined,
+  });
+</script>
+<script src="../../dist/webview.js"></script>
+</body>
+</html>

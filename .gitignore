@@ -1,0 +1,8 @@
+node_modules/
+dist/
+dist-test/
+*.vsix
+.env
+.env.*
+!.env.example
+.forge/
